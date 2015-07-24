@@ -153,7 +153,9 @@ type HostkeyCertificate struct {
 }
 
 type PushOptions struct {
-	PbParallelism uint
+	// Callbacks to use for this fetch operation
+	RemoteCallbacks RemoteCallbacks
+	PbParallelism   uint
 }
 
 type RemoteHead struct {
@@ -689,9 +691,12 @@ func (o *Remote) Ls(filterRefs ...string) ([]RemoteHead, error) {
 }
 
 func (o *Remote) Push(refspecs []string, opts *PushOptions) error {
-	var copts C.git_push_options
-	C.git_push_init_options(&copts, C.GIT_PUSH_OPTIONS_VERSION)
+	copts := (*C.git_push_options)(C.calloc(1, C.size_t(unsafe.Sizeof(C.git_push_options{}))))
+	defer C.free(unsafe.Pointer(copts))
+
+	C.git_push_init_options(copts, C.GIT_PUSH_OPTIONS_VERSION)
 	if opts != nil {
+		populateRemoteCallbacks(&copts.callbacks, &opts.RemoteCallbacks)
 		copts.pb_parallelism = C.uint(opts.PbParallelism)
 	}
 
@@ -704,7 +709,7 @@ func (o *Remote) Push(refspecs []string, opts *PushOptions) error {
 	defer runtime.UnlockOSThread()
 	defer untrackCalbacksPayload(&copts.callbacks)
 
-	ret := C.git_remote_push(o.ptr, &crefspecs, &copts)
+	ret := C.git_remote_push(o.ptr, &crefspecs, copts)
 	if ret < 0 {
 		return MakeGitError(ret)
 	}
