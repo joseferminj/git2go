@@ -609,14 +609,16 @@ func (o *Remote) Fetch(refspecs []string, opts *FetchOptions, msg string) error 
 	crefspecs.strings = makeCStringsFromStrings(refspecs)
 	defer freeStrarray(&crefspecs)
 
-	var coptions C.git_fetch_options
-	populateFetchOptions(&coptions, opts)
-	defer untrackCalbacksPayload(&coptions.callbacks)
+	copts := (*C.git_fetch_options)(C.calloc(1, C.size_t(unsafe.Sizeof(C.git_fetch_options{}))))
+	defer C.free(unsafe.Pointer(copts))
+
+	populateFetchOptions(copts, opts)
+	defer untrackCalbacksPayload(&copts.callbacks)
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	ret := C.git_remote_fetch(o.ptr, &crefspecs, &coptions, cmsg)
+	ret := C.git_remote_fetch(o.ptr, &crefspecs, copts, cmsg)
 	if ret < 0 {
 		return MakeGitError(ret)
 	}
